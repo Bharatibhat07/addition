@@ -1,0 +1,186 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Roles in the system
+enum Role {
+  STUDENT
+  AGENT
+  ADMIN
+}
+
+/// Priority of complaints
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// Status of complaints
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  REJECTED
+  CLOSED
+}
+
+model User {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  emailVerified   DateTime?
+  image           String?
+  hashedPassword  String?
+  role            Role     @default(STUDENT)
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+
+  complaints      Complaint[]      @relation("CreatedComplaints")
+  assigned        Complaint[]      @relation("AssignedComplaints")
+  updates         ComplaintUpdate[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // NextAuth adapter relations
+  accounts        Account[]
+  sessions        Session[]
+}
+
+model Department {
+  id                String      @id @default(cuid())
+  name              String      @unique
+  slug              String      @unique
+  description       String?
+  escalateAfterHrs  Int         @default(48)
+
+  categories        Category[]
+  agents            User[]
+  complaints        Complaint[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Category {
+  id            String     @id @default(cuid())
+  name          String
+  slug          String     @unique
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id])
+  complaints    Complaint[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([name, departmentId])
+}
+
+model Complaint {
+  id               String          @id @default(cuid())
+  title            String
+  description      String
+  locationText     String?
+  autoRouted       Boolean         @default(true)
+  routingConfidence Float?
+
+  priority         Priority        @default(MEDIUM)
+  status           ComplaintStatus @default(OPEN)
+
+  createdById      String
+  createdBy        User            @relation("CreatedComplaints", fields: [createdById], references: [id])
+
+  assignedToId     String?
+  assignedTo       User?           @relation("AssignedComplaints", fields: [assignedToId], references: [id])
+
+  departmentId     String
+  department       Department      @relation(fields: [departmentId], references: [id])
+
+  categoryId       String?
+  category         Category?       @relation(fields: [categoryId], references: [id])
+
+  attachments      Attachment[]
+  updates          ComplaintUpdate[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Attachment {
+  id           String    @id @default(cuid())
+  complaintId  String
+  complaint    Complaint @relation(fields: [complaintId], references: [id])
+  url          String
+  mimeType     String?
+  sizeBytes    Int?
+
+  createdAt    DateTime @default(now())
+}
+
+enum UpdateType {
+  COMMENT
+  STATUS_CHANGE
+  ASSIGNMENT
+  ESCALATION
+  SYSTEM
+}
+
+model ComplaintUpdate {
+  id            String     @id @default(cuid())
+  complaintId   String
+  complaint     Complaint  @relation(fields: [complaintId], references: [id])
+  authorId      String?
+  author        User?      @relation(fields: [authorId], references: [id])
+  type          UpdateType @default(COMMENT)
+  message       String
+  fromStatus    ComplaintStatus?
+  toStatus      ComplaintStatus?
+
+  createdAt     DateTime @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
